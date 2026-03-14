@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LazyDoc</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.min.js"></script>
+    
+    <style>
+        /* --- Thèmes et Variables --- */
+        :root[data-theme="light"] {
+            --bg-base: #f9fafb;
+            --bg-surface: #ffffff;
+            --bg-hover: #f3f4f6;
+            --text-main: #111827;
+            --text-muted: #6b7280;
+            --border-color: #e5e7eb;
+            --accent-color: #000000;
+            --accent-text: #ffffff;
+            --sidebar-width: 320px;
+        }
+
+        :root[data-theme="dark"] {
+            --bg-base: #0f1115;
+            --bg-surface: #16181d;
+            --bg-hover: #22252b;
+            --text-main: #e2e8f0;
+            --text-muted: #94a3b8;
+            --border-color: #2e323a;
+            --accent-color: #ffffff;
+            --accent-text: #000000;
+            --sidebar-width: 320px;
+        }
+
+        /* --- Reset & Base --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* Scrollbars custom */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        /* --- Composants UI --- */
+        .btn {
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn:hover { background-color: var(--bg-hover); }
+        .btn-primary { background-color: var(--accent-color); color: var(--accent-text); border: none; }
+        .btn-primary:hover { opacity: 0.9; background-color: var(--accent-color); }
+        
+        .icon-btn { padding: 8px; border-radius: 6px; cursor: pointer; border: none; background: transparent; color: var(--text-main); transition: background 0.2s; }
+        .icon-btn:hover { background: var(--bg-hover); }
+
+        /* --- Écran de démarrage --- */
+        #setup-screen {
+            position: absolute; inset: 0;
+            background: var(--bg-base);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100;
+        }
+        .setup-card {
+            background: var(--bg-surface); border: 1px solid var(--border-color);
+            padding: 40px; border-radius: 16px; text-align: center; max-width: 480px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+        }
+        #setup-screen h1 { font-size: 24px; font-weight: 600; margin-bottom: 12px; }
+        #setup-screen p { color: var(--text-muted); font-size: 14px; line-height: 1.5; margin-bottom: 32px; }
+
+        /* --- Sidebar --- */
+        #sidebar {
+            width: var(--sidebar-width); background-color: var(--bg-surface);
+            border-right: 1px solid var(--border-color); display: flex; flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .sidebar-header {
+            padding: 0 20px; height: 65px; 
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
+        .sidebar-title { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+
+        #search-container { padding: 16px 20px; }
+        #search-input {
+            width: 100%; padding: 10px 14px; background: var(--bg-base);
+            border: 1px solid var(--border-color); border-radius: 8px;
+            font-size: 13px; color: var(--text-main); outline: none; transition: border 0.2s;
+        }
+        #search-input:focus { border-color: var(--text-muted); }
+
+        #file-list { flex: 1; overflow-y: auto; list-style: none; padding: 0 10px 20px 10px; }
+        .file-item {
+            padding: 10px 14px; margin-bottom: 4px; cursor: pointer; border-radius: 6px;
+            font-size: 14px; color: var(--text-muted); transition: all 0.15s;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .file-item::before { content: "📄"; font-size: 12px; opacity: 0.5; }
+        .file-item.type-pdf::before { content: "📕"; }
+        .file-item.type-html::before { content: "🌐"; }
+        .file-item:hover { background-color: var(--bg-hover); color: var(--text-main); }
+        .file-item.active { background-color: var(--bg-hover); color: var(--text-main); font-weight: 500; }
+
+        /* --- Main Content --- */
+        #main-content { flex: 1; display: flex; flex-direction: column; background: var(--bg-base); position: relative; }
+
+        #toolbar {
+            padding: 16px 40px; border-bottom: 1px solid var(--border-color); background: var(--bg-surface);
+            display: flex; justify-content: space-between; align-items: center; height: 65px;
+        }
+        #file-title { font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 10px; }
+        .file-badge { font-size: 11px; padding: 2px 8px; background: var(--bg-hover); border-radius: 12px; color: var(--text-muted); text-transform: uppercase; }
+
+        .content-area { flex: 1; overflow-y: auto; position: relative; display: flex; flex-direction: column; }
+
+        /* Viewer Styles (Markdown & Text) */
+        #viewer { 
+            padding: 40px 60px; max-width: 900px; margin: 0 auto; width: 100%;
+            line-height: 1.7; font-size: 15px; color: var(--text-main); 
+        }
+        #viewer h1, #viewer h2, #viewer h3, #viewer h4 { color: var(--text-main); font-weight: 600; margin-top: 2em; margin-bottom: 0.8em; }
+        #viewer h1 { font-size: 2.2em; border-bottom: 1px solid var(--border-color); padding-bottom: 0.3em; margin-top: 1em; }
+        #viewer p { margin-bottom: 1.2em; }
+        #viewer a { color: var(--text-main); text-decoration: underline; text-underline-offset: 4px; }
+        #viewer code { background: var(--bg-surface); border: 1px solid var(--border-color); padding: 0.2em 0.4em; border-radius: 4px; font-family: 'Fira Code', monospace; font-size: 0.9em; }
+        #viewer pre { background: var(--bg-surface); border: 1px solid var(--border-color); padding: 20px; border-radius: 8px; overflow-x: auto; margin-bottom: 1.5em; }
+        #viewer pre code { border: none; padding: 0; background: none; }
+        #viewer blockquote { border-left: 3px solid var(--text-muted); padding-left: 16px; color: var(--text-muted); font-style: italic; margin-bottom: 1.5em; }
+        #viewer ul, #viewer ol { padding-left: 1.5em; margin-bottom: 1.5em; }
+        
+        /* Iframe for PDF & HTML */
+        #iframe-viewer { width: 100%; height: 100%; border: none; display: none; background: #fff; }
+
+        /* Editor Styles */
+        #editor {
+            width: 100%; height: 100%; flex: 1; border: none; resize: none; outline: none;
+            font-family: 'Fira Code', monospace; font-size: 14px; line-height: 1.6; 
+            color: var(--text-main); background: var(--bg-base); padding: 40px 60px;
+            display: none;
+        }
+
+        /* Empty State */
+        #empty-state {
+            display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;
+            color: var(--text-muted); text-align: center;
+        }
+        #empty-state svg { width: 48px; height: 48px; opacity: 0.3; margin-bottom: 16px; }
+
+    </style>
+</head>
+<body>
+
+    <div id="setup-screen">
+        <div class="setup-card">
+            <h1>LazyDoc</h1>
+            <p>Sélectionnez un dossier contenant vos fichiers (.md, .txt, .pdf, .html). Le navigateur vous demandera l'autorisation à chaque session pour des raisons de sécurité.</p>
+            <button id="btn-select-dir" class="btn btn-primary" style="width: 100%; justify-content: center; padding: 12px;">Choisir un dossier</button>
+            <button id="btn-resume-dir" class="btn btn-primary" style="width: 100%; justify-content: center; padding: 12px; display: none;">Autoriser l'accès au dossier mémorisé</button>
+        </div>
+    </div>
+
+    <div id="sidebar">
+        <div class="sidebar-header">
+            <span class="sidebar-title">Explorateur</span>
+            <button id="theme-toggle" class="icon-btn" title="Changer de thème">🌓</button>
+        </div>
+        <div id="search-container">
+            <input type="text" id="search-input" placeholder="Rechercher un document..." autocomplete="off">
+        </div>
+        <ul id="file-list"></ul>
+    </div>
+
+    <div id="main-content">
+        <div id="toolbar" style="visibility: hidden;">
+            <div id="file-title">
+                <span id="title-text">Nom du fichier</span>
+                <span id="title-badge" class="file-badge">MD</span>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button id="btn-toggle-edit" class="btn">Éditer le texte</button>
+                <button id="btn-save" class="btn btn-primary" style="display: none;">Enregistrer</button>
+            </div>
+        </div>
+        
+        <div class="content-area" id="content-area">
+            <div id="empty-state">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                <p>Sélectionnez un fichier dans la barre latérale pour commencer.</p>
+            </div>
+
+            <div id="viewer" style="display: none;"></div>
+            <iframe id="iframe-viewer"></iframe>
+            <textarea id="editor"></textarea>
+        </div>
+    </div>
+
+    <script>
+        // --- GESTION DU THÈME ---
+        const themeToggle = document.getElementById('theme-toggle');
+        const htmlEl = document.documentElement;
+        
+        // Charger le thème depuis le localStorage
+        if (localStorage.getItem('theme') === 'light') {
+            htmlEl.setAttribute('data-theme', 'light');
+        }
+
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = htmlEl.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            htmlEl.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+        });
+
+        // --- BASE DE DONNÉES (IndexedDB) ---
+        const dbPromise = new Promise((resolve, reject) => {
+            const request = indexedDB.open('DocManagerProDB', 1);
+            request.onupgradeneeded = (e) => e.target.result.createObjectStore('handles');
+            request.onsuccess = (e) => resolve(e.target.result);
+            request.onerror = () => reject('Erreur IndexedDB');
+        });
+
+        async function saveDirectoryHandle(handle) {
+            const db = await dbPromise;
+            return new Promise(resolve => {
+                const tx = db.transaction('handles', 'readwrite');
+                tx.objectStore('handles').put(handle, 'savedDir');
+                tx.oncomplete = resolve;
+            });
+        }
+
+        async function getSavedDirectoryHandle() {
+            const db = await dbPromise;
+            return new Promise(resolve => {
+                const tx = db.transaction('handles', 'readonly');
+                const req = tx.objectStore('handles').get('savedDir');
+                req.onsuccess = () => resolve(req.result);
+            });
+        }
+
+        // --- ÉTAT GLOBAL ---
+        let dirHandle = null;
+        let filesData = []; 
+        let currentFileIndex = -1;
+        let isEditing = false;
+        let fuse = null;
+        let currentBlobUrl = null; // Pour nettoyer la mémoire des PDF
+
+        // --- DOM ELEMENTS ---
+        const setupScreen = document.getElementById('setup-screen');
+        const btnSelectDir = document.getElementById('btn-select-dir');
+        const btnResumeDir = document.getElementById('btn-resume-dir');
+        const fileListEl = document.getElementById('file-list');
+        const searchInput = document.getElementById('search-input');
+        
+        const toolbar = document.getElementById('toolbar');
+        const titleText = document.getElementById('title-text');
+        const titleBadge = document.getElementById('title-badge');
+        const btnToggleEdit = document.getElementById('btn-toggle-edit');
+        const btnSave = document.getElementById('btn-save');
+        
+        const emptyState = document.getElementById('empty-state');
+        const viewer = document.getElementById('viewer');
+        const iframeViewer = document.getElementById('iframe-viewer');
+        const editor = document.getElementById('editor');
+
+        // --- INIT & PERMISSIONS ---
+        async function init() {
+            const savedHandle = await getSavedDirectoryHandle();
+            if (savedHandle) {
+                dirHandle = savedHandle;
+                btnSelectDir.style.display = 'none';
+                btnResumeDir.style.display = 'flex';
+            }
+        }
+
+        async function verifyPermission(fileHandle, readWrite) {
+            const options = { mode: readWrite ? 'readwrite' : 'read' };
+            if ((await fileHandle.queryPermission(options)) === 'granted') return true;
+            if ((await fileHandle.requestPermission(options)) === 'granted') return true;
+            return false;
+        }
+
+        btnSelectDir.addEventListener('click', async () => {
+            try {
+                dirHandle = await window.showDirectoryPicker();
+                await saveDirectoryHandle(dirHandle);
+                await startApp();
+            } catch (err) { console.log("Sélection annulée."); }
+        });
+
+        btnResumeDir.addEventListener('click', async () => {
+            if (await verifyPermission(dirHandle, true)) {
+                await startApp();
+            }
+        });
+
+        // --- CHARGEMENT DES FICHIERS ---
+        const allowedExtensions = ['.md', '.txt', '.pdf', '.html'];
+
+        async function startApp() {
+            setupScreen.style.display = 'none';
+            await loadFiles(dirHandle);
+            setupSearch();
+            renderFileList(filesData);
+        }
+
+        async function loadFiles(dirHandle) {
+            filesData = [];
+            for await (const entry of dirHandle.values()) {
+                if (entry.kind === 'file') {
+                    const ext = entry.name.substring(entry.name.lastIndexOf('.')).toLowerCase();
+                    if (allowedExtensions.includes(ext)) {
+                        const file = await entry.getFile();
+                        // On ne lit le contenu texte qu'au besoin pour économiser la RAM, sauf pour l'indexation de base
+                        let content = "";
+                        if (ext !== '.pdf') {
+                            content = await file.text();
+                        }
+                        
+                        filesData.push({ 
+                            name: entry.name, 
+                            ext: ext,
+                            handle: entry, 
+                            fileObj: file,
+                            content: content 
+                        });
+                    }
+                }
+            }
+            filesData.sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        // --- MOTEUR DE RECHERCHE ---
+        const normalizeStr = str => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+        function setupSearch() {
+            fuse = new Fuse(filesData, {
+                keys: ['name', 'content'],
+                includeScore: true,
+                threshold: 0.3,
+                ignoreLocation: true,
+                getFn: (obj, path) => normalizeStr(obj[path[0]] || "")
+            });
+        }
+
+        searchInput.addEventListener('input', (e) => {
+            const query = normalizeStr(e.target.value);
+            renderFileList(query ? fuse.search(query).map(r => r.item) : filesData);
+        });
+
+        // --- AFFICHAGE LISTE ---
+        function renderFileList(filesToRender) {
+            fileListEl.innerHTML = '';
+            filesToRender.forEach(file => {
+                const li = document.createElement('li');
+                li.className = `file-item type-${file.ext.substring(1)}`;
+                li.textContent = file.name;
+                
+                if (currentFileIndex !== -1 && filesData[currentFileIndex].name === file.name) {
+                    li.classList.add('active');
+                }
+
+                li.addEventListener('click', () => {
+                    const actualIndex = filesData.findIndex(f => f.name === file.name);
+                    openFile(actualIndex);
+                    document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
+                    li.classList.add('active');
+                });
+                fileListEl.appendChild(li);
+            });
+        }
+
+        // --- OUVERTURE DE FICHIER ---
+        async function openFile(index) {
+            currentFileIndex = index;
+            const fileData = filesData[index];
+            
+            toolbar.style.visibility = 'visible';
+            emptyState.style.display = 'none';
+            titleText.textContent = fileData.name;
+            titleBadge.textContent = fileData.ext.substring(1).toUpperCase();
+            
+            // Reset affichage
+            isEditing = false;
+            editor.style.display = 'none';
+            btnSave.style.display = 'none';
+            btnToggleEdit.textContent = "Éditer le code";
+
+            // Nettoyage de l'ancienne URL PDF si existante
+            if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
+
+            // Logique par type de fichier
+            if (fileData.ext === '.pdf') {
+                viewer.style.display = 'none';
+                iframeViewer.style.display = 'block';
+                btnToggleEdit.style.display = 'none'; // Pas d'édition pour PDF
+                
+                // Rafraichir le fichier pour avoir le dernier état
+                const freshFile = await fileData.handle.getFile();
+                currentBlobUrl = URL.createObjectURL(freshFile);
+                iframeViewer.src = currentBlobUrl;
+                iframeViewer.removeAttribute('srcdoc');
+
+            } else {
+                iframeViewer.style.display = 'none';
+                viewer.style.display = 'block';
+                btnToggleEdit.style.display = 'flex'; // Édition possible
+
+                // Rafraichir le texte
+                const freshFile = await fileData.handle.getFile();
+                fileData.content = await freshFile.text();
+                editor.value = fileData.content;
+
+                if (fileData.ext === '.md') {
+                    viewer.innerHTML = marked.parse(fileData.content);
+                    iframeViewer.style.display = 'none';
+                } else if (fileData.ext === '.html') {
+                    viewer.style.display = 'none';
+                    iframeViewer.style.display = 'block';
+                    // Sandbox l'HTML pour éviter de casser l'app
+                    iframeViewer.src = '';
+                    iframeViewer.srcdoc = fileData.content;
+                } else if (fileData.ext === '.txt') {
+                    viewer.innerHTML = `<pre style="white-space: pre-wrap; word-wrap: break-word;">${fileData.content.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`;
+                }
+            }
+        }
+
+        // --- ÉDITION & SAUVEGARDE ---
+        btnToggleEdit.addEventListener('click', () => {
+            isEditing = !isEditing;
+            const fileData = filesData[currentFileIndex];
+
+            if (isEditing) {
+                viewer.style.display = 'none';
+                iframeViewer.style.display = 'none';
+                editor.style.display = 'block';
+                btnSave.style.display = 'flex';
+                btnToggleEdit.textContent = "Mode Lecture";
+            } else {
+                editor.style.display = 'none';
+                btnSave.style.display = 'none';
+                btnToggleEdit.textContent = "Éditer le code";
+                openFile(currentFileIndex); // Recharge l'affichage visuel
+            }
+        });
+
+        btnSave.addEventListener('click', async () => {
+            if (currentFileIndex === -1) return;
+            const fileData = filesData[currentFileIndex];
+            const newContent = editor.value;
+
+            try {
+                // Écriture sur le disque
+                const writable = await fileData.handle.createWritable();
+                await writable.write(newContent);
+                await writable.close();
+
+                // Maj mémoire
+                fileData.content = newContent;
+                setupSearch(); // Réindexation
+                
+                // Feedback visuel
+                const originalText = btnSave.textContent;
+                btnSave.textContent = "✔ Enregistré";
+                setTimeout(() => { btnSave.textContent = originalText; }, 1500);
+
+            } catch (err) {
+                alert("Erreur lors de la sauvegarde : " + err);
+            }
+        });
+
+        init();
+    </script>
+</body>
+</html>
